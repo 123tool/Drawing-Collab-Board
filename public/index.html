@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPY-E COLLAB BOARD | 123TOOL</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;900&display=swap" rel="stylesheet">
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { 
+            background: radial-gradient(circle, #0a0a0a 0%, #000 100%); 
+            color: #00f2ff; 
+            overflow: hidden;
+            font-family: 'Orbitron', sans-serif;
+        }
+        canvas { display: block; cursor: crosshair; }
+        
+        #ui-layer {
+            position: fixed; top: 20px; left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            padding: 15px 30px;
+            border-radius: 50px;
+            border: 1px solid rgba(0, 242, 255, 0.2);
+            text-align: center;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .brand { font-size: 0.8rem; letter-spacing: 3px; opacity: 0.7; }
+        
+        .controls {
+            position: fixed; bottom: 30px; right: 30px;
+            display: flex; gap: 10px; z-index: 100;
+        }
+
+        .btn {
+            background: rgba(0, 242, 255, 0.1);
+            border: 1px solid #00f2ff;
+            color: #00f2ff;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: 'Orbitron'; font-size: 0.7rem;
+            transition: 0.3s;
+            pointer-events: auto;
+        }
+
+        .btn:hover { background: #00f2ff; color: #000; }
+
+        /* Style Cursor User Lain */
+        .cursor {
+            position: absolute; width: 12px; height: 12px;
+            background: #ff00ff; border-radius: 50%;
+            box-shadow: 0 0 10px #ff00ff;
+            pointer-events: none; z-index: 99;
+            transition: 0.1s linear;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div class="brand">SPY-E REAL-TIME BOARD</div>
+        <div style="font-size: 0.5rem; color: #555;">ENCRYPTED COLLABORATION UNIT</div>
+    </div>
+
+    <div class="controls">
+        <button class="btn" onclick="clearBoard()">WIPE BOARD</button>
+    </div>
+
+    <div id="cursors"></div>
+    <canvas id="paper"></canvas>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const canvas = document.getElementById('paper');
+        const ctx = canvas.getContext('2d');
+        const cursorsLayer = document.getElementById('cursors');
+        
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let drawing = false;
+        let prev = {};
+        let clients = {};
+        let cursors = {};
+        const id = Math.random().toString(36).substr(2, 9);
+
+        // Setting Canvas Ganas
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = '#00f2ff';
+        ctx.shadowBlur = 5;
+        ctx.shadowColor = '#00f2ff';
+
+        canvas.addEventListener('mousedown', (e) => {
+            drawing = true;
+            prev = { x: e.pageX, y: e.pageY };
+        });
+
+        window.addEventListener('mouseup', () => drawing = false);
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (drawing) {
+                drawLine(prev.x, prev.y, e.pageX, e.pageY, '#00f2ff');
+                prev = { x: e.pageX, y: e.pageY };
+            }
+            // Emit data ke server
+            socket.emit('mousemove', { x: e.pageX, y: e.pageY, drawing, id });
+        });
+
+        socket.on('moving', (data) => {
+            if (!(data.id in cursors)) {
+                const c = document.createElement('div');
+                c.className = 'cursor';
+                cursorsLayer.appendChild(c);
+                cursors[data.id] = c;
+            }
+
+            cursors[data.id].style.left = data.x + 'px';
+            cursors[data.id].style.top = data.y + 'px';
+
+            if (data.drawing && clients[data.id]) {
+                drawLine(clients[data.id].x, clients[data.id].y, data.x, data.y, '#ff00ff');
+            }
+            clients[data.id] = data;
+        });
+
+        socket.on('clearCanvas', () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        });
+
+        socket.on('clientDisconnect', (id) => {
+            if(cursors[id]) {
+                cursors[id].remove();
+                delete cursors[id];
+                delete clients[id];
+            }
+        });
+
+        function drawLine(fromx, fromy, tox, toy, color) {
+            ctx.beginPath();
+            ctx.strokeStyle = color;
+            ctx.shadowColor = color;
+            ctx.moveTo(fromx, fromy);
+            ctx.lineTo(tox, toy);
+            ctx.stroke();
+        }
+
+        function clearBoard() {
+            socket.emit('clear');
+        }
+    </script>
+</body>
+</html>
